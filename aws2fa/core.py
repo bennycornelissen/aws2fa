@@ -15,8 +15,12 @@ except NameError:
 class AWS2FA(object):
 
     def __init__(self, **kwargs):
-        self._config_path = os.path.join(self._get_configuration_path(), 'config')
-        self._credentials_path = os.path.join(self._get_configuration_path(), 'credentials')
+        # If environment variables (as used by AWS CLI) are set, prefer them over defaults
+        self._config_path = os.environ.get('AWS_CONFIG_FILE',
+                                           os.path.join(self._get_configuration_path(), 'config'))
+        self._credentials_path = os.environ.get('AWS_SHARED_CREDENTIALS_FILE',
+                                                os.path.join(self._get_configuration_path(), 'credentials'))
+
         self.profile = kwargs.get('profile')
         self.hours = kwargs.get('hours')
         self._profile_credentials = self._get_profile_credentials()
