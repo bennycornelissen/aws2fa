@@ -36,6 +36,96 @@ class TestAWS2FA(unittest.TestCase):
     @patch('aws2fa.bin.AWS2FA._get_sts_client')
     @patch('aws2fa.bin.AWS2FA._user_input')
     @patch('aws2fa.bin.AWS2FA._get_configuration_path')
+    def test_config_from_environment_no_profile(self, _get_configuration_path, _user_input, _get_sts_client):
+
+        # Set user configuration
+
+        config_path = tempfile.mkdtemp()
+
+        self.set_config(
+            os.path.join(config_path, 'credentials'),
+            [
+                "[default]",
+                "aws_secret_access_key = SECRET_ACCESS_KEY",
+                "aws_access_key_id = ACCESS_KEY_ID",
+            ]
+        )
+
+        self.set_config(
+            os.path.join(config_path, 'config-env'),
+            [
+                "[default]",
+                "region = eu-west-1",
+            ]
+        )
+
+        # Configure mocks
+
+        _get_sts_client.return_value.get_session_token.return_value = {
+            'Credentials': {
+                'SessionToken': 'TEMP_SESSION_TOKEN',
+                'SecretAccessKey': 'TEMP_SECRET_ACCESS_KEY',
+                'AccessKeyId': 'TEMP_ACCESS_KEY_ID',
+                'Expiration': datetime.now()
+            }
+        }
+
+        _get_configuration_path.return_value = config_path
+        _user_input.side_effect = [
+            "device-arn",
+            "123456"
+        ]
+
+        # Run aws2fa
+
+        os.environ['AWS_CONFIG_FILE'] = os.path.join(config_path, 'config-env')
+
+        out = main(['aws2fa'])
+
+        # Test
+
+        _get_sts_client.return_value.get_session_token.assert_called_once_with(
+            DurationSeconds=43200,
+            SerialNumber='device-arn',
+            TokenCode='123456'
+        )
+
+        self.assert_config_section(
+            os.path.join(config_path, 'credentials'),
+            'default',
+            {
+                'aws_access_key_id': 'TEMP_ACCESS_KEY_ID',
+                'aws_secret_access_key': 'TEMP_SECRET_ACCESS_KEY',
+                'aws_session_token': 'TEMP_SESSION_TOKEN'
+            }
+        )
+
+        self.assert_config_section(
+            os.path.join(config_path, 'credentials'),
+            'default::source-profile',
+            {
+                'aws_access_key_id': 'ACCESS_KEY_ID',
+                'aws_secret_access_key': 'SECRET_ACCESS_KEY',
+            }
+        )
+
+        self.assert_config_section(
+            os.path.join(config_path, 'config-env'),
+            'default',
+            {
+                'mfa_serial': 'device-arn',
+                'region': 'eu-west-1',
+                'source_profile': 'default::source-profile'
+            }
+        )
+
+        self.assertEqual(out, 0)
+
+        del os.environ['AWS_CONFIG_FILE']
+
+    @patch('aws2fa.bin.AWS2FA._get_sts_client')
+    @patch('aws2fa.bin.AWS2FA._user_input')
+    @patch('aws2fa.bin.AWS2FA._get_configuration_path')
     def test_general_no_profile(self, _get_configuration_path, _user_input, _get_sts_client):
 
         # Set user configuration
